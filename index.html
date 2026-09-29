@@ -45,6 +45,11 @@ summary{cursor:pointer;font-weight:600}
 .t th,.t td{border:1px solid var(--line);padding:4px 8px;text-align:left}
 .t hr{border:0;border-top:1px solid var(--line);margin:1em 0}
 .hint{color:var(--mute)}
+.big,.sing{grid-column:1/-1}
+.big{border-top-width:6px}
+.sing summary{cursor:pointer;font-weight:600;padding:4px 0}
+#grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));margin-top:12px}
+select{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
 </style>
 </head>
 <body>
@@ -56,6 +61,8 @@ summary{cursor:pointer;font-weight:600}
 <summary>API-Keys und Modelle</summary>
 <div id="fields"></div>
 <div class="f"><label style="font-weight:400"><input type="checkbox" id="short" style="width:auto;margin-right:8px">Kurze Antworten (höchstens 5 Sätze)</label></div>
+<div class="f"><label style="font-weight:400"><input type="checkbox" id="merge" style="width:auto;margin-right:8px">Eine gemeinsame Antwort erstellen</label></div>
+<div class="f"><label for="synth">Zusammenführen mit</label><select id="synth"></select><small>Dieses Modell fasst die Antworten zusammen. Groq ist meist am zuverlässigsten.</small></div>
 <div class="row"><button id="save" class="go">Speichern</button><span id="saved" class="st"></span></div>
 <p class="st">Die Keys bleiben nur in diesem Browser auf Deinem Gerät. Es reicht, wenn Du einen Key einträgst.</p>
 </details>
@@ -84,10 +91,13 @@ P.forEach(p=>{
  $('m-'+p.id).value=S.models[p.id]||p.model;
 });
 $('short').checked=S.short!==false;
+$('merge').checked=S.merge!==false;
+P.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;$('synth').appendChild(o)});
+$('synth').value=S.synth||'groq';
 if(!Object.values(S.keys).some(Boolean))$('set').open=true;
 
 $('save').onclick=()=>{
- S.short=$('short').checked;
+ S.short=$('short').checked;S.merge=$('merge').checked;S.synth=$('synth').value;
  P.forEach(p=>{S.keys[p.id]=$('k-'+p.id).value.trim();S.models[p.id]=$('m-'+p.id).value.trim()||p.model});
  try{localStorage.setItem('sabre',JSON.stringify(S));$('saved').textContent='Gespeichert.'}
  catch(e){$('saved').textContent='Speichern nicht möglich. Die Keys gelten nur bis zum Schließen.'}
@@ -143,21 +153,47 @@ $('send').onclick=()=>{
  if(!q)return;
  const active=P.filter(p=>S.keys[p.id]);
  if(!active.length){out.innerHTML='<p class="hint">Trag zuerst oben mindestens einen API-Key ein und tippe auf „Speichern“.</p>';$('set').open=true;return}
+ const short=$('short').checked,merge=$('merge').checked&&active.length>1;
  $('send').disabled=true;
+ const mk=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt)e.textContent=txt;return e};
+ const copyBtn=(b,getText)=>{b.hidden=false;b.onclick=()=>navigator.clipboard.writeText(getText()).then(()=>{b.textContent='Kopiert'},()=>{b.textContent='Kopieren nicht möglich'})};
+ let box=out,cst,ct,cb;
+ if(merge){
+  const c=mk('article','a big');c.style.setProperty('--c','var(--acc)');
+  cst=mk('div','st','Sammelt die Antworten …');ct=mk('div','t');cb=mk('button','','Antwort kopieren');cb.hidden=true;
+  c.append(mk('h2','','Gemeinsame Antwort'),cst,ct,cb);out.appendChild(c);
+  const d=mk('details','sing');d.appendChild(mk('summary','','Einzelantworten anzeigen'));
+  box=mk('div');box.id='grid';d.appendChild(box);out.appendChild(d);
+ }
  Promise.allSettled(active.map(p=>{
-  const c=document.createElement('article');c.className='a';c.style.setProperty('--c',p.c);
-  const h=document.createElement('h2');h.textContent=p.name;
-  const st=document.createElement('div');st.className='st';st.textContent='Antwortet …';
-  const t=document.createElement('div');t.className='t';
-  const b=document.createElement('button');b.textContent='Antwort kopieren';b.hidden=true;
-  c.append(h,st,t,b);out.appendChild(c);
+  const c=mk('article','a');c.style.setProperty('--c',p.c);
+  const st=mk('div','st','Antwortet …'),t=mk('div','t'),b=mk('button','','Antwort kopieren');b.hidden=true;
+  c.append(mk('h2','',p.name),st,t,b);box.appendChild(c);
   const t0=performance.now();
-  return ask(p,$('short').checked?q+'\n\nAntworte knapp in höchstens 5 Sätzen.':q).then(r=>{
+  return ask(p,short?q+'\n\nAntworte knapp in höchstens 5 Sätzen.':q).then(r=>{
    st.textContent=((performance.now()-t0)/1000).toFixed(1).replace('.',',')+' s';
-   t.innerHTML=md(r);b.hidden=false;
-   b.onclick=()=>navigator.clipboard.writeText(r).then(()=>{b.textContent='Kopiert'},()=>{b.textContent='Kopieren nicht möglich'});
-  }).catch(e=>{st.classList.add('e');st.textContent='Fehler: '+e.message});
- })).then(()=>{$('send').disabled=false});
+   t.innerHTML=md(r);copyBtn(b,()=>r);
+   return {name:p.name,text:r};
+  }).catch(e=>{st.classList.add('e');st.textContent=e.name==='TypeError'?'Keine Verbindung. Prüfe Dein Netz.':'Fehler: '+e.message;return null});
+ })).then(async res=>{
+  if(merge){
+   const ok=res.map(x=>x.value).filter(Boolean);
+   const t0=performance.now();
+   if(!ok.length){cst.classList.add('e');cst.textContent='Keine Antwort erhalten. Details stehen unter „Einzelantworten“.';}
+   else if(ok.length===1){cst.textContent='Nur eine Antwort war verfügbar.';ct.innerHTML=md(ok[0].text);copyBtn(cb,()=>ok[0].text)}
+   else{
+    cst.textContent='Führt '+ok.length+' Antworten zusammen …';
+    const sp=active.find(p=>p.id===$('synth').value)||active[0];
+    const prompt='Frage:\n'+q+'\n\nHier sind '+ok.length+' Antworten verschiedener KIs:\n\n'+ok.map((o,i)=>'--- Antwort '+(i+1)+' ---\n'+o.text).join('\n\n')+'\n\nFasse die besten und übereinstimmenden Inhalte zu EINER klaren Antwort zusammen. Nenne Widersprüche kurz und lass offensichtliche Fehler weg. Antworte in der Sprache der Frage'+(short?', knapp in höchstens 5 Sätzen':'')+'. Erwähne die einzelnen KIs nicht.';
+    try{
+     const r=await ask(sp,prompt);
+     cst.textContent='Aus '+ok.length+' Antworten zusammengeführt ('+((performance.now()-t0)/1000).toFixed(1).replace('.',',')+' s)';
+     ct.innerHTML=md(r);copyBtn(cb,()=>r);
+    }catch(e){cst.classList.add('e');cst.textContent='Zusammenführen fehlgeschlagen: '+e.message+' Die Einzelantworten findest Du unten.'}
+   }
+  }
+  $('send').disabled=false;
+ });
 };
 </script>
 </body>
