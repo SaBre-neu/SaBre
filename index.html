@@ -57,7 +57,7 @@ summary{cursor:pointer;font-weight:600}
 
 <script>
 const P=[
- {id:'groq',name:'Llama (Groq)',c:'#f26b3a',type:'oa',url:'https://api.groq.com/openai/v1/chat/completions',model:'llama-3.3-70b-versatile'},
+ {id:'groq',name:'GPT-OSS (Groq)',c:'#f26b3a',type:'oa',url:'https://api.groq.com/openai/v1/chat/completions',model:'openai/gpt-oss-120b'},
  {id:'gemini',name:'Gemini (Google)',c:'#3b82f6',type:'gem',model:'gemini-flash-latest'},
  {id:'mistral',name:'Mistral',c:'#e8a317',type:'oa',url:'https://api.mistral.ai/v1/chat/completions',model:'mistral-small-latest'},
  {id:'openrouter',name:'OpenRouter (Gratis-Modell)',c:'#12a594',type:'oa',url:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free'}
@@ -68,7 +68,7 @@ const $=id=>document.getElementById(id);
 
 P.forEach(p=>{
  const d=document.createElement('div');d.className='f';
- d.innerHTML=`<label for="k-${p.id}">${p.name}</label><input id="k-${p.id}" type="password" autocomplete="off" placeholder="API-Key einfügen"><input id="m-${p.id}" placeholder="Modellname"><small>Modellname bei Bedarf anpassen.</small>`;
+ d.innerHTML=`<label for="k-${p.id}">${p.name}</label><input id="k-${p.id}" name="key-${p.id}" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" placeholder="API-Key einfügen"><input id="m-${p.id}" name="model-${p.id}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Modellname"><small>Modellname bei Bedarf anpassen.</small>`;
  $('fields').appendChild(d);
  $('k-'+p.id).value=S.keys[p.id]||'';
  $('m-'+p.id).value=S.models[p.id]||p.model;
@@ -90,7 +90,14 @@ async function ask(p,q){
   res=await fetch(p.url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model,messages:[{role:'user',content:q}]})});
  }
  const data=await res.json().catch(()=>({}));
- if(!res.ok)throw new Error((data.error&&data.error.message)||('Fehler '+res.status));
+ if(!res.ok){
+  const m=(data.error&&data.error.message)||'';
+  if(res.status===429)throw new Error('Zu viele Anfragen. Warte ein paar Minuten und versuche es noch einmal.');
+  if(res.status===503||res.status===529||/high demand|overloaded/i.test(m))throw new Error('Das Modell ist gerade überlastet. Versuche es in ein paar Minuten noch einmal.');
+  if(res.status===401||res.status===403||/api key|unauthorized/i.test(m))throw new Error('Der API-Key wird nicht akzeptiert. Prüfe ihn in den Einstellungen.');
+  if(res.status===404||/model/i.test(m))throw new Error('Modell nicht gefunden. Prüfe den Modellnamen in den Einstellungen.');
+  throw new Error(m||('Fehler '+res.status));
+ }
  const txt=p.type==='gem'?(data.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join(''):data.choices?.[0]?.message?.content;
  if(!txt)throw new Error('Keine Antwort erhalten.');
  return txt;
