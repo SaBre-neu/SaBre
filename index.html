@@ -79,7 +79,7 @@ select{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1p
 <details id="hist"><summary>Gespeicherte Gespräche</summary><div id="hl"></div></details>
 <div id="thread"></div>
 <textarea id="q" placeholder="Was möchtest Du wissen?" aria-label="Deine Frage"></textarea>
-<div class="row stack"><button id="send" class="go">Frage senden</button><label class="fl">Anhang<input type="file" id="file" multiple accept="image/*,application/pdf,.txt,.md,.csv,.json" hidden></label><button id="newc">Neues Gespräch</button></div>
+<div class="row stack"><button id="send" class="go">Frage senden</button><label class="fl">Anhang<input type="file" id="file" multiple accept="image/*,application/pdf,.txt,.md,.csv,.json" hidden></label><button id="mic">Sprechen</button><button id="newc">Neues Gespräch</button></div>
 <div class="st" id="fn"></div>
 <label class="st"><input type="checkbox" id="web" style="width:auto;margin-right:6px">Websuche (nur Gemini)</label>
 <div id="out"></div>
@@ -179,6 +179,30 @@ $('file').onchange=async e=>{ATT=[];TXT=[];const n=[];for(const f of e.target.fi
  else TXT.push('Datei '+f.name+':\n'+(await f.text()).slice(0,20000)+'\n\n')}
  $('fn').textContent=n.join(', ')};
 hist();
+let REC=null,CHK=[];
+$('mic').onclick=async()=>{
+ if(REC){REC.stop();return}
+ if(!S.keys.groq){$('fn').textContent='Für die Spracheingabe wird der Groq-Key gebraucht.';$('set').open=true;return}
+ try{
+  const st=await navigator.mediaDevices.getUserMedia({audio:true});
+  CHK=[];REC=new MediaRecorder(st);
+  REC.ondataavailable=e=>CHK.push(e.data);
+  REC.onstop=async()=>{
+   st.getTracks().forEach(t=>t.stop());
+   const mime=REC.mimeType||'audio/mp4';REC=null;
+   $('mic').textContent='Wird umgewandelt …';$('mic').disabled=true;
+   try{
+    const fd=new FormData();fd.append('file',new Blob(CHK,{type:mime}),'aufnahme.'+(mime.includes('mp4')?'m4a':'webm'));fd.append('model','whisper-large-v3');
+    const r=await fetch('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{Authorization:'Bearer '+S.keys.groq},body:fd});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error((d.error&&d.error.message)||('Fehler '+r.status));
+    $('q').value=($('q').value+' '+d.text).trim();$('fn').textContent='';
+   }catch(e){$('fn').textContent='Spracheingabe fehlgeschlagen: '+e.message}
+   $('mic').textContent='Sprechen';$('mic').disabled=false;
+  };
+  REC.start();$('mic').textContent='Aufnahme läuft, zum Beenden tippen';
+ }catch(e){$('fn').textContent='Kein Zugriff auf das Mikrofon. Erlaube ihn in den Safari-Einstellungen für diese Seite.'}
+};
 function addFollow(out){const d=document.createElement('div');d.className='fu';const t=document.createElement('textarea');t.placeholder='Weitere Frage …';t.setAttribute('aria-label','Weitere Frage');
  const b=document.createElement('button');b.className='go';b.textContent='Frage senden';b.onclick=()=>{if(!t.value.trim())return;$('q').value=t.value;$('send').click()};d.append(t,b);out.appendChild(d)}
 $('send').onclick=()=>{
