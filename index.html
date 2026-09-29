@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SaBre">
+<title>SaBre</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌊%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e8eff0;--card:#f7fafa;--ink:#10262b;--mute:#5b7176;--line:#c5d4d6;--acc:#3b37c9;--accink:#fff;--err:#a3271f;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#0f171a;--card:#172226;--ink:#e6f0f1;--mute:#8fa6ab;--line:#28393e;--acc:#8b88ff;--accink:#0f171a;--err:#ff8b80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font:800 34px/1 "Bricolage Grotesque",system-ui,sans-serif;margin:0 0 4px;letter-spacing:-.02em}
+.sub{color:var(--mute);margin:0 0 20px}
+textarea,input{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+textarea{min-height:110px;resize:vertical}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 16px}
+button.go{background:var(--acc);color:var(--accink);border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;margin:12px 0 22px;align-items:center}
+details{margin-bottom:18px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+summary{cursor:pointer;font-weight:600}
+.f{margin:12px 0}.f label{display:block;font-weight:600;margin-bottom:4px}
+.f small{color:var(--mute)}
+.f input+input{margin-top:6px}
+#out{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.a{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.a h2{margin:0;font-size:17px}
+.st{color:var(--mute);font-size:14px}
+.st.e{color:var(--err)}
+.t{white-space:pre-wrap;overflow-wrap:anywhere}
+.hint{color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+<h1>SaBre</h1>
+<p class="sub">Eine Frage, mehrere KIs. Du wählst die beste Antwort.</p>
+
+<details id="set">
+<summary>API-Keys und Modelle</summary>
+<div id="fields"></div>
+<div class="row"><button id="save" class="go">Speichern</button><span id="saved" class="st"></span></div>
+<p class="st">Die Keys bleiben nur in diesem Browser auf Deinem Gerät. Es reicht, wenn Du einen Key einträgst.</p>
+</details>
+
+<textarea id="q" placeholder="Was möchtest Du wissen?" aria-label="Deine Frage"></textarea>
+<div class="row"><button id="send" class="go">Frage senden</button></div>
+<div id="out"></div>
+</main>
+
+<script>
+const P=[
+ {id:'groq',name:'Llama (Groq)',c:'#f26b3a',type:'oa',url:'https://api.groq.com/openai/v1/chat/completions',model:'llama-3.3-70b-versatile'},
+ {id:'gemini',name:'Gemini (Google)',c:'#3b82f6',type:'gem',model:'gemini-flash-latest'},
+ {id:'mistral',name:'Mistral',c:'#e8a317',type:'oa',url:'https://api.mistral.ai/v1/chat/completions',model:'mistral-small-latest'},
+ {id:'openrouter',name:'OpenRouter (Gratis-Modell)',c:'#12a594',type:'oa',url:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free'}
+];
+let S={keys:{},models:{}};
+try{S=Object.assign(S,JSON.parse(localStorage.getItem('sabre')||'{}'))}catch(e){}
+const $=id=>document.getElementById(id);
+
+P.forEach(p=>{
+ const d=document.createElement('div');d.className='f';
+ d.innerHTML=`<label for="k-${p.id}">${p.name}</label><input id="k-${p.id}" type="password" autocomplete="off" placeholder="API-Key einfügen"><input id="m-${p.id}" placeholder="Modellname"><small>Modellname bei Bedarf anpassen.</small>`;
+ $('fields').appendChild(d);
+ $('k-'+p.id).value=S.keys[p.id]||'';
+ $('m-'+p.id).value=S.models[p.id]||p.model;
+});
+if(!Object.values(S.keys).some(Boolean))$('set').open=true;
+
+$('save').onclick=()=>{
+ P.forEach(p=>{S.keys[p.id]=$('k-'+p.id).value.trim();S.models[p.id]=$('m-'+p.id).value.trim()||p.model});
+ try{localStorage.setItem('sabre',JSON.stringify(S));$('saved').textContent='Gespeichert.'}
+ catch(e){$('saved').textContent='Speichern nicht möglich. Die Keys gelten nur bis zum Schließen.'}
+};
+
+async function ask(p,q){
+ const key=S.keys[p.id],model=S.models[p.id]||p.model;
+ let res;
+ if(p.type==='gem'){
+  res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:q}]}]})});
+ }else{
+  res=await fetch(p.url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model,messages:[{role:'user',content:q}]})});
+ }
+ const data=await res.json().catch(()=>({}));
+ if(!res.ok)throw new Error((data.error&&data.error.message)||('Fehler '+res.status));
+ const txt=p.type==='gem'?(data.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join(''):data.choices?.[0]?.message?.content;
+ if(!txt)throw new Error('Keine Antwort erhalten.');
+ return txt;
+}
+
+$('send').onclick=()=>{
+ const q=$('q').value.trim();
+ const out=$('out');out.innerHTML='';
+ if(!q)return;
+ const active=P.filter(p=>S.keys[p.id]);
+ if(!active.length){out.innerHTML='<p class="hint">Trag zuerst oben mindestens einen API-Key ein und tippe auf „Speichern“.</p>';$('set').open=true;return}
+ $('send').disabled=true;
+ Promise.allSettled(active.map(p=>{
+  const c=document.createElement('article');c.className='a';c.style.setProperty('--c',p.c);
+  const h=document.createElement('h2');h.textContent=p.name;
+  const st=document.createElement('div');st.className='st';st.textContent='Antwortet …';
+  const t=document.createElement('div');t.className='t';
+  const b=document.createElement('button');b.textContent='Antwort kopieren';b.hidden=true;
+  c.append(h,st,t,b);out.appendChild(c);
+  const t0=performance.now();
+  return ask(p,q).then(r=>{
+   st.textContent=((performance.now()-t0)/1000).toFixed(1).replace('.',',')+' s';
+   t.textContent=r;b.hidden=false;
+   b.onclick=()=>navigator.clipboard.writeText(r).then(()=>{b.textContent='Kopiert'},()=>{b.textContent='Kopieren nicht möglich'});
+  }).catch(e=>{st.classList.add('e');st.textContent='Fehler: '+e.message});
+ })).then(()=>{$('send').disabled=false});
+};
+</script>
+</body>
+</html>
