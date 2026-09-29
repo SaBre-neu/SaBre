@@ -9,9 +9,9 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌊%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#e8eff0;--card:#f7fafa;--ink:#10262b;--mute:#5b7176;--line:#c5d4d6;--acc:#3b37c9;--accink:#fff;--err:#a3271f;
+:root{--bg:#fff;--card:#f3f5f7;--ink:#000;--mute:#5c6670;--line:#d9dee3;--acc:#5ab4f5;--accink:#000;--err:#b3261e;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root{--bg:#0f171a;--card:#172226;--ink:#e6f0f1;--mute:#8fa6ab;--line:#28393e;--acc:#8b88ff;--accink:#0f171a;--err:#ff8b80}}
+:root[data-theme="dark"]{--bg:#000;--card:#111417;--ink:#fff;--mute:#9aa4ad;--line:#252b30;--acc:#7cc7ff;--accink:#000;--err:#ff8a80}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,sans-serif}
 main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
@@ -45,6 +45,10 @@ summary{cursor:pointer;font-weight:600}
 .t th,.t td{border:1px solid var(--line);padding:4px 8px;text-align:left}
 .t hr{border:0;border-top:1px solid var(--line);margin:1em 0}
 .hint{color:var(--mute)}
+.a{--c:var(--line)!important}
+.big{--c:var(--acc)!important}
+.fu{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.fu textarea{min-height:80px}
 .u{grid-column:1/-1;background:var(--acc);color:var(--accink);border-radius:12px;padding:10px 14px;margin:8px 0 8px auto;white-space:pre-wrap;max-width:90%;width:fit-content}
 .as{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0}
 .fl{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 16px;cursor:pointer}
@@ -63,7 +67,7 @@ select{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1p
 <details id="set">
 <summary>API-Keys und Modelle</summary>
 <div id="fields"></div>
-<div class="f"><label style="font-weight:400"><input type="checkbox" id="short" style="width:auto;margin-right:8px">Kurze Antworten (höchstens 5 Sätze)</label></div>
+<div class="f"><label style="font-weight:400"><input type="checkbox" id="short" style="width:auto;margin-right:8px">Kurze Antworten (höchstens 10 Sätze)</label></div>
 <div class="f"><label style="font-weight:400"><input type="checkbox" id="merge" style="width:auto;margin-right:8px">Eine gemeinsame Antwort erstellen</label></div>
 <div class="f"><label for="synth">Zusammenführen mit</label><select id="synth"></select><small>Dieses Modell fasst die Antworten zusammen. Groq ist meist am zuverlässigsten.</small></div>
 <div class="row"><button id="save" class="go">Speichern</button><span id="saved" class="st"></span></div>
@@ -90,6 +94,7 @@ let S={keys:{},models:{}};
 try{S=Object.assign(S,JSON.parse(localStorage.getItem('sabre')||'{}'))}catch(e){}
 if(S.v!==2){S.models={};S.v=2}
 const $=id=>document.getElementById(id);
+const applyTheme=()=>{const h=new Date().getHours();document.documentElement.dataset.theme=(h>=7&&h<19)?'light':'dark'};applyTheme();setInterval(applyTheme,300000);
 
 P.forEach(p=>{
  const d=document.createElement('div');d.className='f';
@@ -172,6 +177,8 @@ $('file').onchange=async e=>{ATT=[];TXT=[];const n=[];for(const f of e.target.fi
  else TXT.push('Datei '+f.name+':\n'+(await f.text()).slice(0,20000)+'\n\n')}
  $('fn').textContent=n.join(', ')};
 hist();
+function addFollow(out){const d=document.createElement('div');d.className='fu';const t=document.createElement('textarea');t.placeholder='Weitere Frage …';t.setAttribute('aria-label','Weitere Frage');
+ const b=document.createElement('button');b.className='go';b.textContent='Frage senden';b.onclick=()=>{if(!t.value.trim())return;$('q').value=t.value;$('send').click()};d.append(t,b);out.appendChild(d)}
 $('send').onclick=()=>{
  const q=$('q').value.trim();
  const out=$('out');out.innerHTML='';
@@ -182,8 +189,8 @@ $('send').onclick=()=>{
  $('send').disabled=true;
  const mk=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt)e.textContent=txt;return e};
  const copyBtn=(b,getText)=>{b.hidden=false;b.onclick=()=>navigator.clipboard.writeText(getText()).then(()=>{b.textContent='Kopiert'},()=>{b.textContent='Kopieren nicht möglich'})};
- const att=ATT,qq=TXT.join('')+q+(short?'\n\nAntworte knapp in höchstens 5 Sätzen.':''),web=$('web').checked;
- ATT=[];TXT=[];$('file').value='';$('fn').textContent='';
+ const att=ATT,qq=TXT.join('')+q+(short?'\n\nAntworte knapp in höchstens 10 Sätzen.':''),web=$('web').checked;
+ ATT=[];TXT=[];$('file').value='';$('fn').textContent='';$('q').value='';
  thread();const ub=mk('div','u',q);out.appendChild(ub);
  let box=out,cst,ct,cb;
  if(merge){
@@ -213,7 +220,7 @@ $('send').onclick=()=>{
    else{
     cst.textContent='Führt '+ok.length+' Antworten zusammen …';
     const sp=active.find(p=>p.id===$('synth').value)||active[0];
-    const prompt='Frage:\n'+q+'\n\nHier sind '+ok.length+' Antworten verschiedener KIs:\n\n'+ok.map((o,i)=>'--- Antwort '+(i+1)+' ---\n'+o.text).join('\n\n')+'\n\nFasse die besten und übereinstimmenden Inhalte zu EINER klaren Antwort zusammen. Nenne Widersprüche kurz und lass offensichtliche Fehler weg. Antworte in der Sprache der Frage'+(short?', knapp in höchstens 5 Sätzen':'')+'. Erwähne die einzelnen KIs nicht.';
+    const prompt='Frage:\n'+q+'\n\nHier sind '+ok.length+' Antworten verschiedener KIs:\n\n'+ok.map((o,i)=>'--- Antwort '+(i+1)+' ---\n'+o.text).join('\n\n')+'\n\nFasse die besten und übereinstimmenden Inhalte zu EINER klaren Antwort zusammen. Nenne Widersprüche kurz und lass offensichtliche Fehler weg. Antworte in der Sprache der Frage'+(short?', knapp in höchstens 10 Sätzen':'')+'. Erwähne die einzelnen KIs nicht.';
     try{
      const r=await ask(sp,[{role:'user',text:prompt}]);
      cst.textContent='Aus '+ok.length+' Antworten zusammengeführt ('+((performance.now()-t0)/1000).toFixed(1).replace('.',',')+' s)';
@@ -221,7 +228,7 @@ $('send').onclick=()=>{
     }catch(e){cst.classList.add('e');cst.textContent='Zusammenführen fehlgeschlagen: '+e.message+' Die Einzelantworten findest Du unten.'}
    }
   }
-  $('send').disabled=false;
+  addFollow(out);$('send').disabled=false;
  });
 };
 </script>
