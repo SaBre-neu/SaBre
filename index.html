@@ -34,7 +34,16 @@ summary{cursor:pointer;font-weight:600}
 .a h2{margin:0;font-size:17px}
 .st{color:var(--mute);font-size:14px}
 .st.e{color:var(--err)}
-.t{white-space:pre-wrap;overflow-wrap:anywhere}
+.t{overflow-wrap:anywhere}
+.t>*:first-child{margin-top:0}.t>*:last-child{margin-bottom:0}
+.t p,.t ul,.t ol,.t pre,.t .tw{margin:0 0 .7em}
+.t h3{font-size:16px;margin:1em 0 .4em}
+.t ul,.t ol{padding-left:1.3em}
+.t code{background:var(--bg);border-radius:4px;padding:1px 4px;font-size:.92em}
+.t pre{background:var(--bg);border-radius:8px;padding:10px;overflow-x:auto}.t pre code{padding:0;background:none}
+.t .tw{overflow-x:auto}.t table{border-collapse:collapse;font-size:14px}
+.t th,.t td{border:1px solid var(--line);padding:4px 8px;text-align:left}
+.t hr{border:0;border-top:1px solid var(--line);margin:1em 0}
 .hint{color:var(--mute)}
 </style>
 </head>
@@ -46,6 +55,7 @@ summary{cursor:pointer;font-weight:600}
 <details id="set">
 <summary>API-Keys und Modelle</summary>
 <div id="fields"></div>
+<div class="f"><label style="font-weight:400"><input type="checkbox" id="short" style="width:auto;margin-right:8px">Kurze Antworten (höchstens 5 Sätze)</label></div>
 <div class="row"><button id="save" class="go">Speichern</button><span id="saved" class="st"></span></div>
 <p class="st">Die Keys bleiben nur in diesem Browser auf Deinem Gerät. Es reicht, wenn Du einen Key einträgst.</p>
 </details>
@@ -73,9 +83,11 @@ P.forEach(p=>{
  $('k-'+p.id).value=S.keys[p.id]||'';
  $('m-'+p.id).value=S.models[p.id]||p.model;
 });
+$('short').checked=S.short!==false;
 if(!Object.values(S.keys).some(Boolean))$('set').open=true;
 
 $('save').onclick=()=>{
+ S.short=$('short').checked;
  P.forEach(p=>{S.keys[p.id]=$('k-'+p.id).value.trim();S.models[p.id]=$('m-'+p.id).value.trim()||p.model});
  try{localStorage.setItem('sabre',JSON.stringify(S));$('saved').textContent='Gespeichert.'}
  catch(e){$('saved').textContent='Speichern nicht möglich. Die Keys gelten nur bis zum Schließen.'}
@@ -103,6 +115,28 @@ async function ask(p,q){
  return txt;
 }
 
+function md(s){
+ const esc=x=>x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+ const inl=x=>esc(x).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g,'$1<em>$2</em>');
+ const UL=/^\s*[-*•]\s+/,OL=/^\s*\d+[.)]\s+/;
+ const L=s.replace(/\r/g,'').split('\n');let h='',i=0,m;
+ while(i<L.length){
+  const l=L[i];
+  if(/^```/.test(l)){const c=[];i++;while(i<L.length&&!/^```/.test(L[i]))c.push(L[i++]);i++;h+='<pre><code>'+esc(c.join('\n'))+'</code></pre>';continue}
+  if(m=l.match(/^#{1,6}\s+(.*)/)){h+='<h3>'+inl(m[1])+'</h3>';i++;continue}
+  if(UL.test(l)){h+='<ul>';while(i<L.length&&UL.test(L[i]))h+='<li>'+inl(L[i++].replace(UL,''))+'</li>';h+='</ul>';continue}
+  if(OL.test(l)){h+='<ol>';while(i<L.length&&OL.test(L[i]))h+='<li>'+inl(L[i++].replace(OL,''))+'</li>';h+='</ol>';continue}
+  if(/^\s*\|/.test(l)){const r=[];while(i<L.length&&/^\s*\|/.test(L[i]))r.push(L[i++]);
+   h+='<div class="tw"><table>'+r.filter(x=>!/^[\s:|-]+$/.test(x)).map((x,k)=>'<tr>'+x.trim().replace(/^\||\|$/g,'').split('|').map(c=>(k?'<td>':'<th>')+inl(c.trim())+(k?'</td>':'</th>')).join('')+'</tr>').join('')+'</table></div>';continue}
+  if(/^\s*(-{3,}|\*{3,})\s*$/.test(l)){h+='<hr>';i++;continue}
+  if(!l.trim()){i++;continue}
+  const q=[];while(i<L.length&&L[i].trim()&&!/^(```|#{1,6}\s|\s*\|)/.test(L[i])&&!UL.test(L[i])&&!OL.test(L[i]))q.push(L[i++]);
+  if(!q.length)q.push(L[i++]);
+  h+='<p>'+q.map(inl).join('<br>')+'</p>';
+ }
+ return h;
+}
+
 $('send').onclick=()=>{
  const q=$('q').value.trim();
  const out=$('out');out.innerHTML='';
@@ -118,9 +152,9 @@ $('send').onclick=()=>{
   const b=document.createElement('button');b.textContent='Antwort kopieren';b.hidden=true;
   c.append(h,st,t,b);out.appendChild(c);
   const t0=performance.now();
-  return ask(p,q).then(r=>{
+  return ask(p,$('short').checked?q+'\n\nAntworte knapp in höchstens 5 Sätzen.':q).then(r=>{
    st.textContent=((performance.now()-t0)/1000).toFixed(1).replace('.',',')+' s';
-   t.textContent=r;b.hidden=false;
+   t.innerHTML=md(r);b.hidden=false;
    b.onclick=()=>navigator.clipboard.writeText(r).then(()=>{b.textContent='Kopiert'},()=>{b.textContent='Kopieren nicht möglich'});
   }).catch(e=>{st.classList.add('e');st.textContent='Fehler: '+e.message});
  })).then(()=>{$('send').disabled=false});
