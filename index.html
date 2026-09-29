@@ -45,6 +45,8 @@ summary{cursor:pointer;font-weight:600}
 .t th,.t td{border:1px solid var(--line);padding:4px 8px;text-align:left}
 .t hr{border:0;border-top:1px solid var(--line);margin:1em 0}
 .hint{color:var(--mute)}
+.stack{flex-direction:column;align-items:stretch}
+.stack>*{width:100%;text-align:center}
 .a{--c:var(--line)!important}
 .big{--c:var(--acc)!important}
 .fu{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;margin-top:6px}
@@ -77,7 +79,7 @@ select{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1p
 <details id="hist"><summary>Gespeicherte Gespräche</summary><div id="hl"></div></details>
 <div id="thread"></div>
 <textarea id="q" placeholder="Was möchtest Du wissen?" aria-label="Deine Frage"></textarea>
-<div class="row" style="flex-wrap:wrap"><button id="send" class="go">Frage senden</button><label class="fl">Anhang<input type="file" id="file" multiple accept="image/*,application/pdf,.txt,.md,.csv,.json" hidden></label><button id="newc">Neues Gespräch</button></div>
+<div class="row stack"><button id="send" class="go">Frage senden</button><label class="fl">Anhang<input type="file" id="file" multiple accept="image/*,application/pdf,.txt,.md,.csv,.json" hidden></label><button id="newc">Neues Gespräch</button></div>
 <div class="st" id="fn"></div>
 <label class="st"><input type="checkbox" id="web" style="width:auto;margin-right:6px">Websuche (nur Gemini)</label>
 <div id="out"></div>
