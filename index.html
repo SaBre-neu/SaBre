@@ -45,6 +45,9 @@ summary{cursor:pointer;font-weight:600}
 .t th,.t td{border:1px solid var(--line);padding:4px 8px;text-align:left}
 .t hr{border:0;border-top:1px solid var(--line);margin:1em 0}
 .hint{color:var(--mute)}
+.u{grid-column:1/-1;background:var(--acc);color:var(--accink);border-radius:12px;padding:10px 14px;margin:8px 0 8px auto;white-space:pre-wrap;max-width:90%;width:fit-content}
+.as{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:8px 0}
+.fl{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 16px;cursor:pointer}
 .big,.sing{grid-column:1/-1}
 .big{border-top-width:6px}
 .sing summary{cursor:pointer;font-weight:600;padding:4px 0}
@@ -67,20 +70,25 @@ select{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1p
 <p class="st">Die Keys bleiben nur in diesem Browser auf Deinem Gerät. Es reicht, wenn Du einen Key einträgst.</p>
 </details>
 
+<details id="hist"><summary>Gespeicherte Gespräche</summary><div id="hl"></div></details>
+<div id="thread"></div>
 <textarea id="q" placeholder="Was möchtest Du wissen?" aria-label="Deine Frage"></textarea>
-<div class="row"><button id="send" class="go">Frage senden</button></div>
+<div class="row" style="flex-wrap:wrap"><button id="send" class="go">Frage senden</button><label class="fl">Anhang<input type="file" id="file" multiple accept="image/*,application/pdf,.txt,.md,.csv,.json" hidden></label><button id="newc">Neues Gespräch</button></div>
+<div class="st" id="fn"></div>
+<label class="st"><input type="checkbox" id="web" style="width:auto;margin-right:6px">Websuche (nur Gemini)</label>
 <div id="out"></div>
 </main>
 
 <script>
 const P=[
  {id:'groq',name:'GPT-OSS (Groq)',c:'#f26b3a',type:'oa',url:'https://api.groq.com/openai/v1/chat/completions',model:'openai/gpt-oss-120b'},
- {id:'gemini',name:'Gemini (Google)',c:'#3b82f6',type:'gem',model:'gemini-flash-latest'},
- {id:'mistral',name:'Mistral',c:'#e8a317',type:'oa',url:'https://api.mistral.ai/v1/chat/completions',model:'mistral-small-latest'},
+ {id:'gemini',name:'Gemini (Google)',c:'#3b82f6',type:'gem',vision:true,model:'gemini-flash-lite-latest'},
+ {id:'mistral',name:'Mistral',c:'#e8a317',type:'oa',vision:true,url:'https://api.mistral.ai/v1/chat/completions',model:'open-mistral-nemo'},
  {id:'openrouter',name:'OpenRouter (Gratis-Modell)',c:'#12a594',type:'oa',url:'https://openrouter.ai/api/v1/chat/completions',model:'openrouter/free'}
 ];
 let S={keys:{},models:{}};
 try{S=Object.assign(S,JSON.parse(localStorage.getItem('sabre')||'{}'))}catch(e){}
+if(S.v!==2){S.models={};S.v=2}
 const $=id=>document.getElementById(id);
 
 P.forEach(p=>{
@@ -103,13 +111,17 @@ $('save').onclick=()=>{
  catch(e){$('saved').textContent='Speichern nicht möglich. Die Keys gelten nur bis zum Schließen.'}
 };
 
-async function ask(p,q){
- const key=S.keys[p.id],model=S.models[p.id]||p.model;
+async function ask(p,msgs,o={}){
+ const key=S.keys[p.id],model=S.models[p.id]||p.model,last=msgs.length-1,att=o.att||[];
  let res;
  if(p.type==='gem'){
-  res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:q}]}]})});
+  const contents=msgs.map((m,i)=>({role:m.role==='user'?'user':'model',parts:[{text:m.text}].concat(i===last?att.map(a=>({inline_data:{mime_type:a.mime,data:a.data}})):[])}));
+  const body={contents};if(o.web)body.tools=[{google_search:{}}];
+  res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)});
  }else{
-  res=await fetch(p.url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model,messages:[{role:'user',content:q}]})});
+  const imgs=att.filter(a=>a.mime.startsWith('image/'));
+  const messages=msgs.map((m,i)=>({role:m.role,content:(i===last&&p.vision&&imgs.length)?[{type:'text',text:m.text}].concat(imgs.map(a=>({type:'image_url',image_url:{url:'data:'+a.mime+';base64,'+a.data}}))):m.text}));
+  res=await fetch(p.url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model,messages})});
  }
  const data=await res.json().catch(()=>({}));
  if(!res.ok){
@@ -147,6 +159,19 @@ function md(s){
  return h;
 }
 
+let ATT=[],TXT=[],CH={id:Date.now(),msgs:[]},CHATS=[];
+try{CHATS=JSON.parse(localStorage.getItem('sabre-chats')||'[]')}catch(e){}
+const saveChats=()=>{try{localStorage.setItem('sabre-chats',JSON.stringify(CHATS.slice(0,30)))}catch(e){}};
+function thread(){const t=$('thread');t.innerHTML='';CH.msgs.forEach(m=>{const d=document.createElement('div');d.className=m.role==='user'?'u':'as t';if(m.role==='user')d.textContent=m.text;else d.innerHTML=md(m.text);t.appendChild(d)})}
+function hist(){const h=$('hl');h.innerHTML='';if(!CHATS.length){h.textContent='Noch keine gespeicherten Gespräche.';return}
+ CHATS.forEach(c=>{const r=document.createElement('div');r.className='row';const b=document.createElement('button');b.textContent=c.title;b.style.cssText='flex:1;text-align:left';b.onclick=()=>{CH=JSON.parse(JSON.stringify(c));$('out').innerHTML='';thread();$('hist').open=false};const x=document.createElement('button');x.textContent='Löschen';x.onclick=()=>{CHATS=CHATS.filter(y=>y.id!==c.id);saveChats();hist()};r.append(b,x);h.appendChild(r)})}
+function done(text,q){CH.msgs.push({role:'user',text:q},{role:'assistant',text});if(!CH.title)CH.title=q.slice(0,40);CHATS=CHATS.filter(c=>c.id!==CH.id);CHATS.unshift(JSON.parse(JSON.stringify(CH)));saveChats();hist()}
+$('newc').onclick=()=>{CH={id:Date.now(),msgs:[]};thread();$('out').innerHTML=''};
+$('file').onchange=async e=>{ATT=[];TXT=[];const n=[];for(const f of e.target.files){n.push(f.name);
+ if(/^image\/|application\/pdf/.test(f.type)){const d=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(f)});ATT.push({mime:f.type,data:d})}
+ else TXT.push('Datei '+f.name+':\n'+(await f.text()).slice(0,20000)+'\n\n')}
+ $('fn').textContent=n.join(', ')};
+hist();
 $('send').onclick=()=>{
  const q=$('q').value.trim();
  const out=$('out');out.innerHTML='';
@@ -157,6 +182,9 @@ $('send').onclick=()=>{
  $('send').disabled=true;
  const mk=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt)e.textContent=txt;return e};
  const copyBtn=(b,getText)=>{b.hidden=false;b.onclick=()=>navigator.clipboard.writeText(getText()).then(()=>{b.textContent='Kopiert'},()=>{b.textContent='Kopieren nicht möglich'})};
+ const att=ATT,qq=TXT.join('')+q+(short?'\n\nAntworte knapp in höchstens 5 Sätzen.':''),web=$('web').checked;
+ ATT=[];TXT=[];$('file').value='';$('fn').textContent='';
+ thread();const ub=mk('div','u',q);out.appendChild(ub);
  let box=out,cst,ct,cb;
  if(merge){
   const c=mk('article','a big');c.style.setProperty('--c','var(--acc)');
@@ -170,25 +198,26 @@ $('send').onclick=()=>{
   const st=mk('div','st','Antwortet …'),t=mk('div','t'),b=mk('button','','Antwort kopieren');b.hidden=true;
   c.append(mk('h2','',p.name),st,t,b);box.appendChild(c);
   const t0=performance.now();
-  return ask(p,short?q+'\n\nAntworte knapp in höchstens 5 Sätzen.':q).then(r=>{
+  return ask(p,CH.msgs.concat([{role:'user',text:qq}]),{att,web:web&&p.type==='gem'}).then(r=>{
    st.textContent=((performance.now()-t0)/1000).toFixed(1).replace('.',',')+' s';
    t.innerHTML=md(r);copyBtn(b,()=>r);
    return {name:p.name,text:r};
   }).catch(e=>{st.classList.add('e');st.textContent=e.name==='TypeError'?'Keine Verbindung. Prüfe Dein Netz.':'Fehler: '+e.message;return null});
  })).then(async res=>{
+  const ok0=res.map(x=>x.value).filter(Boolean);if(!merge&&ok0.length)done(ok0[0].text,q);
   if(merge){
    const ok=res.map(x=>x.value).filter(Boolean);
    const t0=performance.now();
    if(!ok.length){cst.classList.add('e');cst.textContent='Keine Antwort erhalten. Details stehen unter „Einzelantworten“.';}
-   else if(ok.length===1){cst.textContent='Nur eine Antwort war verfügbar.';ct.innerHTML=md(ok[0].text);copyBtn(cb,()=>ok[0].text)}
+   else if(ok.length===1){cst.textContent='Nur eine Antwort war verfügbar.';ct.innerHTML=md(ok[0].text);copyBtn(cb,()=>ok[0].text);done(ok[0].text,q)}
    else{
     cst.textContent='Führt '+ok.length+' Antworten zusammen …';
     const sp=active.find(p=>p.id===$('synth').value)||active[0];
     const prompt='Frage:\n'+q+'\n\nHier sind '+ok.length+' Antworten verschiedener KIs:\n\n'+ok.map((o,i)=>'--- Antwort '+(i+1)+' ---\n'+o.text).join('\n\n')+'\n\nFasse die besten und übereinstimmenden Inhalte zu EINER klaren Antwort zusammen. Nenne Widersprüche kurz und lass offensichtliche Fehler weg. Antworte in der Sprache der Frage'+(short?', knapp in höchstens 5 Sätzen':'')+'. Erwähne die einzelnen KIs nicht.';
     try{
-     const r=await ask(sp,prompt);
+     const r=await ask(sp,[{role:'user',text:prompt}]);
      cst.textContent='Aus '+ok.length+' Antworten zusammengeführt ('+((performance.now()-t0)/1000).toFixed(1).replace('.',',')+' s)';
-     ct.innerHTML=md(r);copyBtn(cb,()=>r);
+     ct.innerHTML=md(r);copyBtn(cb,()=>r);done(r,q);
     }catch(e){cst.classList.add('e');cst.textContent='Zusammenführen fehlgeschlagen: '+e.message+' Die Einzelantworten findest Du unten.'}
    }
   }
